@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<title>Repeater</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="toc-toggle" id="tocToggle" aria-label="Chapters" title="Chapters">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h14"/></svg>
+      </button>
+      <button class="title" id="bookTitle" aria-label="Switch book">Loading…<span class="title-caret">▾</span></button>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" id="fontDec" aria-label="Smaller">A−</button>
+      <button class="icon-btn" id="fontInc" aria-label="Larger">A+</button>
+      <button class="icon-btn" id="vocabToggle" aria-label="Vocabulary">Vocab</button>
+      <button class="icon-btn" id="noteToggle" aria-label="Notes">Note</button>
+      <button class="icon-btn" id="statsToggle" aria-label="Stats">Stats</button>
+    </div>
+  </header>
+
+
+  <div class="title-menu" id="titleMenu" hidden>
+    <ul id="libraryList"></ul>
+    <div class="title-menu-divider"></div>
+    <button class="title-menu-add" id="addBookBtn">+ Add new book</button>
+  </div>
+
+  <div class="modal-backdrop" id="addBookModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <span>Add a new book</span>
+        <button class="modal-close" id="addBookClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Adding a book is a command-line workflow (no in-browser upload yet). Two modes:</p>
+        <p><b>Text + Audio</b> — best quality, uses your canonical text as ground truth:</p>
+        <pre><code>bash scripts/add_book.sh &lt;slug&gt; "&lt;title&gt;" &lt;audio.mp3&gt; &lt;text.md&gt; "&lt;author&gt;"</code></pre>
+        <p><b>Audio-only</b> — fast, no text needed. Whisper transcribes + auto-groups paragraphs by pause:</p>
+        <pre><code>bash scripts/add_book.sh &lt;slug&gt; "&lt;title&gt;" &lt;audio.mp3&gt; - "&lt;author&gt;"</code></pre>
+        <p>Optional: set <code>CHUNK_SECONDS=1800</code> to only process the first 30 minutes while testing. Reload this page when done — the new book appears in this menu.</p>
+        <p class="muted">Transcription speed depends on model. base.en ≈ 1× realtime, large-v3-turbo ≈ 0.2× realtime on Apple Silicon.</p>
+      </div>
+    </div>
+  </div>
+
+  <aside class="toc" id="toc" hidden>
+    <div class="toc-head"><span>Chapters</span><span class="toc-sub">sentences</span></div>
+    <ol id="tocList"></ol>
+  </aside>
+
+  <aside class="vocab-panel" id="vocabPanel" hidden>
+    <div class="vocab-head">
+      <span class="vocab-head-left">Vocabulary <span class="count" id="vocabCount"></span></span>
+      <button class="vocab-export" id="vocabExport" title="Export as Markdown">Export</button>
+    </div>
+    <ul id="vocabList"></ul>
+  </aside>
+
+  <aside class="notes-panel" id="notesPanel" hidden>
+    <div class="vocab-head">
+      <span class="vocab-head-left">Notes <span class="count" id="notesCount"></span></span>
+      <button class="vocab-export" id="notesExport" title="Export as Markdown">Export</button>
+    </div>
+    <ul id="notesList"></ul>
+  </aside>
+
+  <aside class="stats-panel" id="statsPanel" hidden>
+    <div class="vocab-head">
+      <span class="vocab-head-left">Stats</span>
+      <span class="stats-headers">
+        <span>repeats</span>
+        <span>time</span>
+      </span>
+    </div>
+    <div class="stats-total" id="statsTotal"></div>
+    <ol id="statsList"></ol>
+  </aside>
+
+  <button class="note-add-hover" id="noteAddHover" hidden aria-label="Add note">+</button>
+
+  <div class="note-editor" id="noteEditor" hidden>
+    <div class="note-editor-head">
+      <span class="note-editor-sent" id="noteEditorSent"></span>
+      <button class="note-editor-close" id="noteEditorClose" aria-label="Close">✕</button>
+    </div>
+    <textarea id="noteEditorText" placeholder="Write a note…" rows="4"></textarea>
+    <div class="note-editor-actions">
+      <button class="note-editor-del" id="noteEditorDel" hidden>Delete</button>
+      <button class="note-editor-save" id="noteEditorSave">Save</button>
+    </div>
+  </div>
+
+  <div class="word-popup" id="wordPopup" hidden>
+    <div class="word-head">
+      <span class="word-term" id="wordTerm"></span>
+      <span class="word-phon" id="wordPhon"></span>
+    </div>
+    <div class="word-def" id="wordDef"></div>
+    <div class="word-enrich" id="wordEnrich" hidden>
+      <div class="word-cn" id="wordCn"></div>
+      <div class="word-mnemonic" id="wordMnemonic"></div>
+    </div>
+    <div class="word-actions">
+      <button class="word-add" id="wordAdd">+ Add to vocab</button>
+    </div>
+  </div>
+
+  <main class="reader" id="reader">
+    <div class="loading">Loading book…</div>
+  </main>
+
+  <div class="bottom-stack">
+  <footer class="player">
+    <div class="now">
+      <div class="now-label" id="nowLabel">—</div>
+      <div class="time"><span id="curTime">0:00</span> / <span id="totalTime">0:00</span></div>
+    </div>
+
+    <div class="controls">
+      <button class="btn" id="btnPrev" title="Previous">‹‹</button>
+      <button class="btn primary" id="btnPlay" aria-label="Play">
+        <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7V5z"/></svg>
+        <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="7.5" y="6" width="3.6" height="12" rx="0.8"/><rect x="12.9" y="6" width="3.6" height="12" rx="0.8"/></svg>
+      </button>
+      <button class="btn" id="btnNext" title="Next">››</button>
+    </div>
+
+    <div class="repeat">
+      <label class="repeat-label">Repeat</label>
+      <div class="repeat-center">
+      <div class="unit-picker" id="unitPicker">
+        <button class="unit-trigger" id="unitTrigger" type="button" aria-haspopup="listbox">
+          <span class="unit-icon" id="unitIcon"></span>
+          <span class="unit-label" id="unitLabel">Sentence</span>
+        </button>
+        <div class="unit-popover" id="unitPopover" hidden role="listbox">
+          <button type="button" data-value="sentence" role="option">
+            <span class="unit-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="2" rx="1"/></svg>
+            </span>
+            Sentence
+          </button>
+          <button type="button" data-value="paragraph" role="option">
+            <span class="unit-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="1.8" rx="0.9"/><rect x="4" y="11.1" width="16" height="1.8" rx="0.9"/><rect x="4" y="16.2" width="10" height="1.8" rx="0.9"/></svg>
+            </span>
+            Paragraph
+          </button>
+          <button type="button" data-value="chapter" role="option">
+            <span class="unit-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v15H5.5A1.5 1.5 0 0 1 4 17.5V5.5Z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v15h5.5a1.5 1.5 0 0 0 1.5-1.5V5.5Z"/></svg>
+            </span>
+            Chapter
+          </button>
+        </div>
+      </div>
+      <label>×
+        <input id="repeatCount" type="text" value="∞" placeholder="∞" size="3" />
+      </label>
+      <span class="counter" id="repeatCounter"></span>
+      </div>
+      <div class="adv-settings" id="advSettings">
+        <button class="adv-trigger" id="advTrigger" type="button" title="Settings" aria-label="Settings"><span class="adv-dots">⋯</span><span class="adv-text">Settings</span></button>
+        <div class="adv-popover" id="advPopover" hidden>
+          <div class="adv-row">
+            <label class="adv-key" for="pauseSeconds">Pause</label>
+            <input id="pauseSeconds" type="text" value="0.5" size="3" />
+            <span class="adv-suffix">s</span>
+          </div>
+          <div class="adv-row adv-row-speed">
+            <label class="adv-key">Speed</label>
+            <div class="speed-row" id="speedRow">
+              <button type="button" data-value="0.5">0.5×</button>
+              <button type="button" data-value="0.75">0.75×</button>
+              <button type="button" data-value="1" class="current">1×</button>
+              <button type="button" data-value="1.25">1.25×</button>
+              <button type="button" data-value="1.5">1.5×</button>
+              <button type="button" data-value="1.75">1.75×</button>
+              <button type="button" data-value="2">2×</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="progress">
+      <input type="range" id="seek" min="0" max="100" value="0" step="0.01" />
+    </div>
+
+    <audio id="audio" preload="metadata"></audio>
+  </footer>
+  <!-- Mobile-only secondary toolbar. JS moves the topbar buttons here on small viewports. -->
+  <nav class="bottom-bar" id="bottomBar" hidden></nav>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

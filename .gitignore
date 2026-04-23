@@ -1,0 +1,40 @@
+# User-provided media & generated data — never commit these
+web/audio/*
+web/library/*
+web/data/*
+!web/audio/.gitkeep
+!web/library/.gitkeep
+!web/data/.gitkeep
+
+# Intermediate ingestion artifacts (large, machine-specific)
+/data/
+*-audio.json
+*-aligned.json
+*-book.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# uv (keep uv.lock if you want reproducible installs; drop if not)
+# uv.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# API keys / secrets
+.env
+*.key
+anthropic_key*
+**/Claude*Key*.md

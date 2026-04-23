@@ -1,0 +1,17 @@
+[project]
+name = "repeater"
+version = "0.1.0"
+description = "A minimalist repeat-player for audiobooks with per-sentence timing alignment."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "soundfile>=0.13.1",
+    "torch>=2.11.0",
+    "torchaudio>=2.11.0",
+    "eng-to-ipa>=0.0.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_USERNAME/repeater"
+Issues   = "https://github.com/YOUR_USERNAME/repeater/issues"
