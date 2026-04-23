@@ -41,8 +41,8 @@ curl -L -o ~/models/whisper/ggml-large-v3-turbo.bin \
 ### 2. Install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/repeater.git
-cd repeater
+git clone https://github.com/XianLiii/tool-i-wish-existed-repeater.git
+cd tool-i-wish-existed-repeater
 uv sync     # installs torch, torchaudio, eng-to-ipa
 ```
 

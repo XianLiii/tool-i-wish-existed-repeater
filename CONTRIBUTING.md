@@ -5,8 +5,8 @@ Thanks for considering a contribution! This is a small, personal project, so exp
 ## Development setup
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/repeater.git
-cd repeater
+git clone https://github.com/XianLiii/tool-i-wish-existed-repeater.git
+cd tool-i-wish-existed-repeater
 uv sync
 brew install ffmpeg whisper-cpp       # or platform equivalent
 ```

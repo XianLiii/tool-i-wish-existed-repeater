@@ -13,5 +13,5 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USERNAME/repeater"
-Issues   = "https://github.com/YOUR_USERNAME/repeater/issues"
+Homepage = "https://github.com/XianLiii/tool-i-wish-existed-repeater"
+Issues   = "https://github.com/XianLiii/tool-i-wish-existed-repeater/issues"
