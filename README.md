@@ -1,5 +1,7 @@
 # Repeater
 
+*Part of **The Tool I Wish Existed** — indie tools I build because nothing else was good enough.*
+
 > A minimalist player for studying audiobooks line-by-line. Click a sentence to jump there, loop it N times, auto-advance. Word-perfect alignment so every loop is a clean cut, not an abrupt clip.
 
 ![Repeater — reader view with focus mode](docs/screenshot.png)
