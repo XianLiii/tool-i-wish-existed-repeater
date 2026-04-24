@@ -298,6 +298,14 @@ function buildIndexes(book) {
   }
 }
 
+// Sentences whose first token is one of these structural markers get
+// rendered on their own line via CSS (.sentence.line-break). Covers:
+//   A. / B. / C. / D.            (option letters, with or without period)
+//   Number 9 / Number nine       (question headers)
+//   Questions 47 through 49      (section headers)
+//   Part 3, Directions, Go on…   (navigation / rubric)
+const STRUCTURAL_LINE_START = /^(?:[A-D]\.?\s+[A-Z]|Number\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b|Questions\s+\d+\s+through|Part\s+\d+|Directions\b|Go on to|Look at the picture|Now,?\s*part|This is the end)/i;
+
 function renderBook(book) {
   reader.innerHTML = '';
   for (let ci = 0; ci < book.chapters.length; ci++) {
@@ -322,6 +330,13 @@ function renderBook(book) {
         span.className = 'sentence';
         if (!(se.start >= 0) || (se.match_ratio || 0) < 0.1) {
           span.classList.add('no-timing');
+        }
+        // Structural sentences (TOEIC option letters, section headers, etc.)
+        // get their own visual line so the question reads like a test sheet
+        // instead of a wall of text. Harmless on prose — regular narrative
+        // sentences never start with "A." / "B." / "Number N" / etc.
+        if (STRUCTURAL_LINE_START.test(se.text)) {
+          span.classList.add('line-break');
         }
         span.textContent = (si === 0 ? '' : ' ') + se.text;
         span.dataset.globalIdx = findGlobalIdx(ci, pi, si);

@@ -312,6 +312,16 @@ body {
 .sentence.no-timing { cursor: not-allowed; }
 .sentence.no-timing:hover { background: none; }
 
+/* Structural sentences — options (A./B./C./D.), question headers
+   ("Number 9"), etc. — render on their own visual line so structured
+   content (TOEIC, multiple-choice) reads like a test sheet rather
+   than a wall of text. Regular prose never matches the marker
+   regex so this has no effect on literature books. */
+.sentence.line-break {
+  display: block;
+  padding-left: 0;
+}
+
 /* Marker shown after pause so the user can find where they stopped. */
 .sentence.last-played::before {
   content: '';
