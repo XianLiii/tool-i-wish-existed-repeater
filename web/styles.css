@@ -369,7 +369,11 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.now-primary, .now-secondary, .now-sep { color: inherit; }
+/* Typography hierarchy applies on both desktop AND mobile:
+   primary text uses --fg (foreground) for prominence,
+   secondary text + separators stay muted as context. */
+.now-primary { color: var(--fg); }
+.now-secondary, .now-sep { color: inherit; }      /* inherits .now-label muted */
 /* Hide separator + secondary span when there's no secondary label
    (e.g., chapter mode where only the chapter title shows) */
 .now-label.no-secondary .now-sep,
@@ -381,6 +385,8 @@ body {
   font-size: 11px;
   color: var(--muted);
 }
+.time #curTime { color: var(--fg); }              /* current time = primary */
+.time #totalTime, .time .time-sep { color: inherit; }   /* total = secondary */
 
 .controls {
   grid-column: 2;
