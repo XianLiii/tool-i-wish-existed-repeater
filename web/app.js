@@ -199,11 +199,23 @@ async function loadBook(bookId) {
   audio.addEventListener('loadedmetadata', () => {
     totalTime.textContent = fmt(audio.duration);
     seek.max = audio.duration;
-    // Restore progress
+    // Restore progress. Also anchor state.unitRef to the sentence covering
+    // the restored time, so clicking ▶ resumes from here instead of jumping
+    // back to the first sentence (which happens when unitRef is null).
     const p = progressByBook[bookId];
     if (p && p.t > 0 && p.t < audio.duration) {
-      audio.currentTime = p.t;
       if (p.unit) setUnitType(p.unit);
+      // Anchor unitRef on the sentence covering p.t so the player knows
+      // which sentence to loop when ▶ is pressed. Pass seek:false so
+      // setUnit doesn't move the playhead to that sentence's start —
+      // we want to resume mid-sentence at the exact saved time.
+      const sentIdx = state.sentences.findIndex(
+        s => s.start <= p.t && p.t < s.end
+      );
+      if (sentIdx >= 0) {
+        setUnit(state.unit, unitIdxFromSentence(state.unit, sentIdx), { seek: false });
+      }
+      audio.currentTime = p.t;
     }
   }, { once: true });
 }
@@ -382,7 +394,7 @@ function unitIdxFromSentence(type, sentIdx) {
   return 0;
 }
 
-function setUnit(type, idx) {
+function setUnit(type, idx, { seek = true } = {}) {
   const ref = makeUnitRef(type, idx);
   if (!ref) return;
   state.unitRef = ref;
@@ -391,7 +403,7 @@ function setUnit(type, idx) {
   setNowLabel(ref.primary, ref.secondary);
   updateCounterUI();
   highlightUnit(ref);
-  if (ref.start >= 0) {
+  if (seek && ref.start >= 0) {
     audio.currentTime = ref.start;
   }
 }
@@ -655,7 +667,18 @@ repeatCountInput.addEventListener('blur', () => {
   }
 });
 
-seek.addEventListener('input', () => { cancelPendingLoop(); audio.currentTime = +seek.value; });
+seek.addEventListener('input', () => {
+  cancelPendingLoop();
+  const t = +seek.value;
+  audio.currentTime = t;
+  // Re-anchor the repeat unit to whichever sentence covers this new time
+  // so pressing ▶ resumes from here (instead of being bounced back to
+  // the previously-set unit's start by the loop logic).
+  const sentIdx = state.sentences.findIndex(s => s.start <= t && t < s.end);
+  if (sentIdx >= 0) {
+    setUnit(state.unit, unitIdxFromSentence(state.unit, sentIdx), { seek: false });
+  }
+});
 
 tocToggle.addEventListener('click', () => {
   toc.hidden = !toc.hidden;
