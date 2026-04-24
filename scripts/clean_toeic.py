@@ -134,15 +134,36 @@ def split_toeic_structure(sents: list) -> list:
 
 
 def rebuild_paragraphs(sents: list, chapter_idx: int) -> list:
-    """Regroup a chapter's flat sentence list into paragraphs by pause gap."""
+    """Regroup a chapter's flat sentence list into paragraphs.
+
+    A new paragraph starts when either:
+      - silence gap > PARAGRAPH_GAP seconds, OR
+      - the sentence begins with a TOEIC structural marker that signals
+        a new question / section ("Number 9", "Questions 47 through 49",
+        "Part 3", "Directions", "Go on to the next page", etc.)
+    """
+    # Start a new paragraph ONLY at top-level section markers. Within a
+    # question ("Number N. Look at the picture... A. ... B. ... C. ... D. ...")
+    # everything stays in one paragraph so the visual grouping matches the
+    # logical one.
+    NUM_WORD = r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|" \
+               r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty"
+    PARA_START_RE = re.compile(
+        rf"^(?:Number (?:\d+|{NUM_WORD})|Questions \d+ through \d+|"
+        rf"Part \d+|Directions|Now,? part\b|This is the end)\b",
+        re.IGNORECASE,
+    )
     paragraphs = []
     cur = []
     prev_end = None
     for s in sents:
-        if prev_end is not None and s["start"] - prev_end > PARAGRAPH_GAP:
-            if cur:
-                paragraphs.append(cur)
-                cur = []
+        starts_new = (
+            (prev_end is not None and s["start"] - prev_end > PARAGRAPH_GAP)
+            or PARA_START_RE.match(s["text"])
+        )
+        if starts_new and cur:
+            paragraphs.append(cur)
+            cur = []
         cur.append(s)
         prev_end = s["end"]
     if cur:
