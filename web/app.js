@@ -58,6 +58,17 @@ document.addEventListener('click', (e) => {
 
 const repeatCounter = document.getElementById('repeatCounter');
 const nowLabel = document.getElementById('nowLabel');
+const nowPrimary = document.getElementById('nowPrimary');
+const nowSecondary = document.getElementById('nowSecondary');
+
+// Sets the bottom-bar position label. Two parts so layout-B mobile can stack
+// "Sentence 1" (primary, more prominent) above "Ch 1" (secondary, muted).
+// On desktop both render inline with a " · " separator (CSS-controlled).
+function setNowLabel(primary, secondary) {
+  nowPrimary.textContent = primary || '';
+  nowSecondary.textContent = secondary || '';
+  nowLabel.classList.toggle('no-secondary', !secondary);
+}
 const curTime = document.getElementById('curTime');
 const totalTime = document.getElementById('totalTime');
 const seek = document.getElementById('seek');
@@ -85,7 +96,7 @@ const state = {
 // "Breathing" gap inserted at every loop boundary so the listener perceives
 // a clean restart instead of an abrupt cut. Audio file is untouched —
 // we just pause the player for `getPauseMs()` before jumping back to start.
-// User configurable via the advanced settings popover (0–60s).
+// User configurable inline in the bottom bar (0–60s).
 const PAUSE_KEY = 'repeater.pauseSeconds';
 const PAUSE_DEFAULT = 0.5;
 const PAUSE_MAX = 60;
@@ -342,17 +353,17 @@ function makeUnitRef(type, idx) {
   if (type === 'sentence') {
     const s = state.sentences[idx];
     if (!s) return null;
-    return { type, idx, start: s.start, end: s.end, label: `Sentence ${idx + 1} · Ch ${s.chIdx + 1}` };
+    return { type, idx, start: s.start, end: s.end, primary: `Sentence ${idx + 1}`, secondary: `Ch ${s.chIdx + 1}` };
   }
   if (type === 'paragraph') {
     const p = state.paragraphs[idx];
     if (!p) return null;
-    return { type, idx, start: p.start, end: p.end, label: `Paragraph ${idx + 1} · Ch ${p.chIdx + 1}` };
+    return { type, idx, start: p.start, end: p.end, primary: `Paragraph ${idx + 1}`, secondary: `Ch ${p.chIdx + 1}` };
   }
   if (type === 'chapter') {
     const c = state.chapters[idx];
     if (!c) return null;
-    return { type, idx, start: c.start, end: c.end, label: c.title };
+    return { type, idx, start: c.start, end: c.end, primary: c.title, secondary: '' };
   }
   return null;
 }
@@ -377,7 +388,7 @@ function setUnit(type, idx) {
   state.unitRef = ref;
   state.repeatDone = 0;
   state.repeatRemaining = getRepeatCount();
-  nowLabel.textContent = ref.label;
+  setNowLabel(ref.primary, ref.secondary);
   updateCounterUI();
   highlightUnit(ref);
   if (ref.start >= 0) {
@@ -532,7 +543,7 @@ function updateFocus(t) {
     // Keep the now-label in sync with the actual playing sentence so the
     // user sees the index update as audio progresses.
     if (state.unit === 'sentence') {
-      nowLabel.textContent = `Sentence ${curIdx + 1} · Ch ${curSent.chIdx + 1}`;
+      setNowLabel(`Sentence ${curIdx + 1}`, `Ch ${curSent.chIdx + 1}`);
     }
     // On touch devices, keep the floating + glued to the current sentence
     // so the user can always tap to add a note without having to hover.
@@ -1515,20 +1526,29 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowLeft') btnPrev.click();
 });
 
-// ---- Advanced settings popover: Pause + Speed ----
+// ---- Inline pause + speed controls (replaces old advanced-settings popover) ----
+// All controls are now visible in the bottom bar as a readable sentence:
+//   Repeat — Sentence × ∞ at 1× · pause 0.5s
+// Speed opens a small popover-up like the unit picker; pause is direct input.
 
-const advSettings = document.getElementById('advSettings');
-const advTrigger = document.getElementById('advTrigger');
-const advPopover = document.getElementById('advPopover');
 const pauseSecondsInput = document.getElementById('pauseSeconds');
-const speedRow = document.getElementById('speedRow');
+const speedPicker = document.getElementById('speedPicker');
+const speedTrigger = document.getElementById('speedTrigger');
+const speedPopover = document.getElementById('speedPopover');
+const speedLabel = document.getElementById('speedLabel');
 
 const SPEED_KEY = 'repeater.speed';
+
+function fmtSpeed(v) {
+  // 1 → "1×", 1.25 → "1.25×", 0.5 → "0.5×"
+  return (v % 1 === 0 ? v.toFixed(0) : String(v)) + '×';
+}
 
 function setSpeed(v, persist = true) {
   const val = Math.max(0.5, Math.min(2, v));
   audio.playbackRate = val;
-  for (const btn of speedRow.querySelectorAll('button')) {
+  if (speedLabel) speedLabel.textContent = fmtSpeed(val);
+  for (const btn of speedPopover.querySelectorAll('button')) {
     btn.classList.toggle('current', parseFloat(btn.dataset.value) === val);
   }
   if (persist) localStorage.setItem(SPEED_KEY, String(val));
@@ -1554,22 +1574,20 @@ pauseSecondsInput.addEventListener('blur', () => {
   }
 });
 
-speedRow.addEventListener('click', (e) => {
+// Speed popover open/close (mirrors unit picker pattern)
+speedTrigger.addEventListener('click', (e) => {
+  e.stopPropagation();
+  speedPopover.hidden = !speedPopover.hidden;
+});
+speedPopover.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-value]');
   if (!btn) return;
   setSpeed(parseFloat(btn.dataset.value));
+  speedPopover.hidden = true;
 });
-
-advTrigger.addEventListener('click', (e) => {
-  e.stopPropagation();
-  advPopover.hidden = !advPopover.hidden;
-  advTrigger.classList.toggle('active', !advPopover.hidden);
-});
-advPopover.addEventListener('click', (e) => e.stopPropagation());
 document.addEventListener('click', (e) => {
-  if (!advSettings.contains(e.target)) {
-    advPopover.hidden = true;
-    advTrigger.classList.remove('active');
+  if (!speedPicker.contains(e.target)) {
+    speedPopover.hidden = true;
   }
 });
 

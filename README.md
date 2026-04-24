@@ -4,7 +4,11 @@
 
 > A minimalist player for studying audiobooks line-by-line. Click a sentence to jump there, loop it N times, auto-advance. Word-perfect alignment so every loop is a clean cut, not an abrupt clip.
 
-![Repeater — reader view with focus mode](docs/screenshot.png)
+<p align="center">
+  <img src="docs/screenshot.png" alt="Repeater — desktop reader with focus mode" width="78%" />
+  &nbsp;
+  <img src="docs/screenshot-mobile.png" alt="Repeater — mobile layout" width="18%" />
+</p>
 
 ## Why
 

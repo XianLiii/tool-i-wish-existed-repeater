@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <title>Repeater</title>
-<link rel="stylesheet" href="styles.css" />
+<link rel="stylesheet" href="styles.css?v=20260424l" />
 </head>
 <body>
   <header class="topbar">
@@ -119,8 +119,10 @@
   <div class="bottom-stack">
   <footer class="player">
     <div class="now">
-      <div class="now-label" id="nowLabel">—</div>
-      <div class="time"><span id="curTime">0:00</span> / <span id="totalTime">0:00</span></div>
+      <div class="now-label" id="nowLabel">
+        <span class="now-primary" id="nowPrimary">—</span><span class="now-sep"> · </span><span class="now-secondary" id="nowSecondary"></span>
+      </div>
+      <div class="time"><span id="curTime">0:00</span><span class="time-sep"> / </span><span id="totalTime">0:00</span></div>
     </div>
 
     <div class="controls">
@@ -133,8 +135,9 @@
     </div>
 
     <div class="repeat">
-      <label class="repeat-label">Repeat</label>
+      <label class="repeat-label desktop-only">Repeat</label>
       <div class="repeat-center">
+      <svg class="repeat-icon mobile-only" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Repeat"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
       <div class="unit-picker" id="unitPicker">
         <button class="unit-trigger" id="unitTrigger" type="button" aria-haspopup="listbox">
           <span class="unit-icon" id="unitIcon"></span>
@@ -165,28 +168,29 @@
         <input id="repeatCount" type="text" value="∞" placeholder="∞" size="3" />
       </label>
       <span class="counter" id="repeatCounter"></span>
-      </div>
-      <div class="adv-settings" id="advSettings">
-        <button class="adv-trigger" id="advTrigger" type="button" title="Settings" aria-label="Settings"><span class="adv-dots">⋯</span><span class="adv-text">Settings</span></button>
-        <div class="adv-popover" id="advPopover" hidden>
-          <div class="adv-row">
-            <label class="adv-key" for="pauseSeconds">Pause</label>
-            <input id="pauseSeconds" type="text" value="0.5" size="3" />
-            <span class="adv-suffix">s</span>
-          </div>
-          <div class="adv-row adv-row-speed">
-            <label class="adv-key">Speed</label>
-            <div class="speed-row" id="speedRow">
-              <button type="button" data-value="0.5">0.5×</button>
-              <button type="button" data-value="0.75">0.75×</button>
-              <button type="button" data-value="1" class="current">1×</button>
-              <button type="button" data-value="1.25">1.25×</button>
-              <button type="button" data-value="1.5">1.5×</button>
-              <button type="button" data-value="1.75">1.75×</button>
-              <button type="button" data-value="2">2×</button>
-            </div>
+      <span class="repeat-mods">
+        <span class="repeat-sep desktop-only">at</span>
+        <div class="speed-picker" id="speedPicker">
+          <button class="speed-trigger" id="speedTrigger" type="button" aria-haspopup="listbox">
+            <span id="speedLabel">1×</span>
+          </button>
+          <div class="speed-popover" id="speedPopover" hidden role="listbox">
+            <button type="button" data-value="0.5" role="option">0.5×</button>
+            <button type="button" data-value="0.75" role="option">0.75×</button>
+            <button type="button" data-value="1" class="current" role="option">1×</button>
+            <button type="button" data-value="1.25" role="option">1.25×</button>
+            <button type="button" data-value="1.5" role="option">1.5×</button>
+            <button type="button" data-value="1.75" role="option">1.75×</button>
+            <button type="button" data-value="2" role="option">2×</button>
           </div>
         </div>
+        <span class="repeat-sep desktop-only">pause</span>
+        <label class="pause-label">
+          <svg class="pause-icon mobile-only" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-label="Pause between loops"><circle cx="12" cy="13" r="7"/><path d="M12 9v4"/><path d="M9 2h6"/><path d="M12 2v3"/></svg>
+          <input id="pauseSeconds" type="text" value="0.5" size="3" />
+          <span class="pause-suffix">s</span>
+        </label>
+      </span>
       </div>
     </div>
 
