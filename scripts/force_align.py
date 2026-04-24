@@ -219,20 +219,29 @@ def align_book(book: dict, audio_path: Path, window_hints: dict | None = None,
         aligned = None
         t0 = None
         if hint is not None:
-            t0 = max(0.0, hint[0] - pad)
-            t1 = min(total_dur, hint[1] + pad)
-            if t1 - t0 > max_chunk_s:
-                # Cap at max_chunk_s centered on the sentence
-                mid = (hint[0] + hint[1]) / 2
-                t0 = max(0.0, mid - max_chunk_s / 2)
-                t1 = min(total_dur, t0 + max_chunk_s)
-            words = tokenize_sentence(se["text"])
-            if words and t1 > t0:
-                waveform = load_audio(audio_path, start=t0, duration=t1 - t0)
-                aligned = align_chunk(waveform, words)
-                # Free MPS memory after each call
-                if hasattr(torch.mps, "empty_cache"):
-                    torch.mps.empty_cache()
+            sent_dur = hint[1] - hint[0]
+            # Skip CTC for sentences that can't fit in a chunk with any padding.
+            # Otherwise we'd truncate audio and the CTC tries to match all the
+            # text against a short chunk → low-conf-but-still-above-min-conf
+            # garbage result, e.g. a 47s sentence clamped to 30s with start/end
+            # both wrong. Fallback (Whisper align.py timing) is correct for these.
+            if sent_dur >= max_chunk_s - 2 * pad:
+                pass  # leave aligned=None → fall through to fallback below
+            else:
+                t0 = max(0.0, hint[0] - pad)
+                t1 = min(total_dur, hint[1] + pad)
+                if t1 - t0 > max_chunk_s:
+                    # Cap at max_chunk_s centered on the sentence
+                    mid = (hint[0] + hint[1]) / 2
+                    t0 = max(0.0, mid - max_chunk_s / 2)
+                    t1 = min(total_dur, t0 + max_chunk_s)
+                words = tokenize_sentence(se["text"])
+                if words and t1 > t0:
+                    waveform = load_audio(audio_path, start=t0, duration=t1 - t0)
+                    aligned = align_chunk(waveform, words)
+                    # Free MPS memory after each call
+                    if hasattr(torch.mps, "empty_cache"):
+                        torch.mps.empty_cache()
 
         if aligned and len(aligned) > 0:
             mean_conf = sum(a[3] for a in aligned) / len(aligned)
