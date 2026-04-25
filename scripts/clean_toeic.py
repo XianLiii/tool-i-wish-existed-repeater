@@ -41,19 +41,30 @@ TOEIC_SPLITS = re.compile(
     # on either side enforce context. The leading-space before each `|` is
     # deliberately absent — adding one would consume the space BEFORE the
     # lookbehind could see the character before it, silently breaking the match.
-    r"(?<=\w) (?=Number \d+\b)"             # "... Number 9 ..." or "Number 9. ..."
-    r"|(?<=\w) (?=Questions \d+ through)"   # "... Questions 47 through 49 ..."
-    r"|(?<=\w) (?=Part \d+\b)"              # "... Part 3 ..."
-    r"|(?<=\w) (?=Directions\b)"            # "... Directions ..."
-    r"|(?<=\w) (?=Look at the picture)"     # "... Look at the picture ..."
-    r"|(?<=\w) (?=Go on to)"                # "... Go on to the next page"
+    # Some CDs come back from Whisper fully word-level and lowercased, so
+    # every structural marker has an inline `(?i)` to accept either case.
+    # Skip "marked number N" (picture-label phrase, not a new question) via
+    # 7-char negative lookbehind on the preceding word.
+    r"(?<=\w)(?<!marked) (?=(?i:Number) \d+\b)"
+    r"|(?<=\w)(?<!marked) (?=(?i:Number) (?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b)"
+    r"|(?<=\w) (?=(?i:Questions) \d+ (?i:through))"
+    r"|(?<=\w) (?=(?i:Part) \d+\b)"
+    r"|(?<=\w) (?=(?i:Directions)\b)"
+    r"|(?<=\w) (?=(?i:Look at the picture))"
+    r"|(?<=\w) (?=(?i:Go on to))"
+    r"|(?<=\w) (?=(?i:Now, listen to the))"
     r"|(?<=\w) (?=[A-D]\. [A-Z])"           # "...text A. The pilots..."
-    r"|(?<=\w) (?=[A-D] [A-Z][a-z])"        # merged word-level: "...text A The pilots..."
-    r"|(?<=conversation) (?=[A-Z])"         # "... following conversation Haven't..."
-    r"|(?<=announcement) (?=[A-Z])"         # "... following announcement ..."
-    r"|(?<=talk) (?=[A-Z])"                 # "... following talk ..."
-    r"|(?<=[a-z]\?) (?=[A-Z])"              # "...something? Then next sentence"
-    r"|(?<=[a-z]\.) (?=[A-Z])"              # "...done. Next sentence." (not "C. ..." or "Mr. ...")
+    r"|(?<=\w) (?=[A-D] [A-Z][a-z])"        # "...text A The pilots..."
+    # Lowercase option letters ARE ambiguous ("take a look"), so require the
+    # next token to be a pronoun / contraction / common option-start word.
+    r"|(?<=\w) (?=[a-d] (?:he|she|it|they|we|you|I|a|an|the|some|many|most|"
+    r"both|either|there|this|that|these|those|"
+    r"\w+'(?:s|re|ve|ll|d|m))\b)"
+    r"|(?<=conversation) (?=[A-Z])"
+    r"|(?<=announcement) (?=[A-Z])"
+    r"|(?<=talk) (?=[A-Z])"
+    r"|(?<=[a-z]\?) (?=[A-Z])"
+    r"|(?<=[a-z]\.) (?=[A-Z])"
 )
 
 PARAGRAPH_GAP = 1.5  # seconds; merge sentences into paragraphs when gap < this
@@ -73,8 +84,13 @@ def merge_word_level(sents: list) -> list:
     if avg_len > 25:
         return sents
 
-    MAX_MERGED_DUR = 10.0   # cap merged "sentences" at 10s
-    GAP_FLUSH = 0.45        # ≥ 0.45s silence between words → new sentence
+    # For word-level Whisper output, silence gaps are NOT reliable sentence
+    # boundaries — the narrator pauses mid-option too. Instead we let the
+    # structural-splits pass downstream segment by TOEIC markers (A./B./C./D.,
+    # Number N, etc.). Here we merge aggressively so full passages arrive at
+    # that pass as single strings.
+    MAX_MERGED_DUR = 30.0
+    GAP_FLUSH = 1.5
     out = []
     cur = None
     for s in sents:
@@ -95,6 +111,24 @@ def merge_word_level(sents: list) -> list:
             cur = None
     if cur:
         out.append(cur)
+    return out
+
+
+def glue_option_fragments(sents: list) -> list:
+    """Merge single-letter 'A'/'B'/'C'/'D' fragments with the next sentence.
+    Word-level Whisper output sometimes emits the option letter as its own
+    word-segment (with a pause before the option content), so the merge pass
+    flushes after the letter. Re-glue them here."""
+    LETTER = re.compile(r"^[A-Da-d]\.?$")
+    out = []
+    for s in sents:
+        if out:
+            prev = out[-1]
+            if LETTER.match(prev["text"].strip()):
+                prev["text"] = prev["text"].rstrip() + " " + s["text"].lstrip()
+                prev["end"] = s["end"]
+                continue
+        out.append(s)
     return out
 
 
@@ -205,6 +239,11 @@ def main():
         sents = merge_word_level(sents)
         after_merge = len(sents)
         totals["merged"] += (before - after_merge)
+
+        sents = glue_option_fragments(sents)
+        after_glue = len(sents)
+        totals["merged"] += (after_merge - after_glue)
+        after_merge = after_glue
 
         sents = dedupe_hallucinations(sents)
         after_dedupe = len(sents)
