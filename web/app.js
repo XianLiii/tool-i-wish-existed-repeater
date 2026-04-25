@@ -195,6 +195,10 @@ async function loadBook(bookId) {
   renderTOC(data);
   renderLibraryMenu();
   markSentencesWithNotes();
+  // Refresh side panels so vocab/notes counts + lists reflect the new book
+  // (both are stored per-bookId, so the visible slice changes when we switch).
+  renderVocab();
+  renderNotes();
 
   audio.addEventListener('loadedmetadata', () => {
     totalTime.textContent = fmt(audio.duration);
@@ -299,12 +303,30 @@ function buildIndexes(book) {
 }
 
 // Sentences whose first token is one of these structural markers get
-// rendered on their own line via CSS (.sentence.line-break). Covers:
-//   A. / B. / C. / D.            (option letters, with or without period)
-//   Number 9 / Number nine       (question headers)
-//   Questions 47 through 49      (section headers)
-//   Part 3, Directions, Go on…   (navigation / rubric)
-const STRUCTURAL_LINE_START = /^(?:[A-D]\.?\s+[A-Z]|Number\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b|Questions\s+\d+\s+through|Part\s+\d+|Directions\b|Go on to|Look at the picture|Now,?\s*part|This is the end)/i;
+// rendered on their own line via CSS (.sentence.line-break). Covers both
+// well-formatted Whisper output (A. B. C. D.) and raw word-level output
+// (lowercase "a they're leaving", "number one" without caps/punctuation).
+const STRUCTURAL_LINE_START = new RegExp(
+  "^(?:" +
+    // Option letters with period: "A. He's..." / "a. he's..."
+    "[A-Da-d]\\.\\s+\\S" +
+    // Option letters as bare char followed by Capital word (merged): "A He's..."
+    "|[A-D]\\s+[A-Z]" +
+    // Option letters lowercase + pronoun/contraction (word-level text)
+    "|[a-d]\\s+(?:he|she|it|they|we|you|I|a|an|the|some|many|most|both|" +
+      "either|there|this|that|these|those|\\w+'(?:s|re|ve|ll|d|m))\\b" +
+    // Section headers
+    "|Number\\s+(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|" +
+      "eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|" +
+      "nineteen|twenty)\\b" +
+    "|Questions\\s+\\d+\\s+through" +
+    "|Part\\s+\\d+" +
+    "|Directions\\b" +
+    "|Go on to" +
+    "|Look at the picture" +
+    "|Now,?\\s*(?:part|listen)\\b" +
+    "|This is the end" +
+  ")", "i");
 
 function renderBook(book) {
   reader.innerHTML = '';
@@ -368,7 +390,10 @@ function renderTOC(book) {
     li.innerHTML = `<span class="name">${ch.title}</span><span class="count">${count}</span>`;
     li.addEventListener('click', () => {
       document.getElementById(`ch-${ci}`).scrollIntoView({ behavior: 'smooth', block: 'start' });
-      toc.hidden = true;
+      // On mobile, close the panel so the reader is visible.
+      // On desktop, keep it open — the TOC is a side panel that
+      // coexists with the reader, no reason to dismiss it.
+      if (mobileMQ.matches) toc.hidden = true;
     });
     tocList.appendChild(li);
   }
@@ -815,37 +840,59 @@ const wordMnemonic = document.getElementById('wordMnemonic');
 
 const VOCAB_URL = 'data/vocab.json';
 const VOCAB_KEY = 'repeater.vocab.v1';
-let vocab = [];
+let vocabByBook = {};     // {bookId: [entries]}
 let currentLookup = null; // {word, def}
 
+function currentBookVocab() {
+  if (!state.bookId) return [];
+  if (!vocabByBook[state.bookId]) vocabByBook[state.bookId] = [];
+  return vocabByBook[state.bookId];
+}
+
 async function loadVocab() {
-  // 1. Try server-side file first (shared across browsers)
+  // 1. Try server-side file first
   try {
     const r = await fetch(VOCAB_URL + '?t=' + Date.now());
     if (r.ok) {
       const data = await r.json();
-      if (Array.isArray(data)) { vocab = data; return; }
+      if (Array.isArray(data)) {
+        // Legacy flat format → migrate under current book id.
+        // Falls back to "one-hundred-years" if bookId isn't set yet
+        // (that's what all pre-migration vocab came from in practice).
+        const bid = state.bookId || 'one-hundred-years';
+        vocabByBook = data.length ? { [bid]: data } : {};
+        await saveVocab();
+        return;
+      }
+      if (data && typeof data === 'object') { vocabByBook = data; return; }
     }
   } catch {}
-  // 2. Fall back to localStorage (migrate if present)
+  // 2. Fall back to localStorage
   try {
-    const stored = JSON.parse(localStorage.getItem(VOCAB_KEY) || '[]');
-    if (Array.isArray(stored)) { vocab = stored; saveVocab(); }
-  } catch { vocab = []; }
+    const stored = JSON.parse(localStorage.getItem(VOCAB_KEY) || '{}');
+    if (Array.isArray(stored)) {
+      const bid = state.bookId || 'one-hundred-years';
+      vocabByBook = stored.length ? { [bid]: stored } : {};
+    } else if (stored && typeof stored === 'object') {
+      vocabByBook = stored;
+    }
+    saveVocab();
+  } catch { vocabByBook = {}; }
 }
 
 async function saveVocab() {
-  localStorage.setItem(VOCAB_KEY, JSON.stringify(vocab));
+  localStorage.setItem(VOCAB_KEY, JSON.stringify(vocabByBook));
   try {
     await fetch(VOCAB_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(vocab),
+      body: JSON.stringify(vocabByBook),
     });
   } catch {}
 }
 
 function renderVocab() {
+  const vocab = currentBookVocab();
   vocabCount.textContent = vocab.length ? `${vocab.length}` : '';
   vocabList.innerHTML = '';
   if (!vocab.length) {
@@ -867,7 +914,7 @@ loadVocab().then(renderVocab);
 vocabList.addEventListener('click', (e) => {
   const b = e.target.closest('.vocab-del');
   if (b) {
-    vocab.splice(+b.dataset.i, 1);
+    currentBookVocab().splice(+b.dataset.i, 1);
     saveVocab();
     renderVocab();
   }
@@ -910,11 +957,34 @@ vocabToggle.addEventListener('click', () => {
 });
 
 document.getElementById('vocabExport').addEventListener('click', () => {
-  if (!vocab.length) return;
-  const md = exportVocabMD();
-  const safeTitle = (state.book?.title || 'vocab').replace(/[^a-zA-Z0-9-]+/g, '-');
-  downloadFile(`vocab-${safeTitle}-${new Date().toISOString().slice(0,10)}.md`, md);
+  const scope = pickExportScope('生词', vocabByBook, currentBookVocab().length);
+  if (!scope) return;
+  const md = exportVocabMD(scope);
+  if (!md) return;
+  const date = new Date().toISOString().slice(0, 10);
+  const fileName = scope === 'all'
+    ? `vocab-all-${date}.md`
+    : `vocab-${(state.book?.title || 'book').replace(/[^a-zA-Z0-9-]+/g, '-')}-${date}.md`;
+  downloadFile(fileName, md);
 });
+
+// Ask whether to export just the current book's data or all books' data.
+// Returns 'current' | 'all' | null (user cancelled or nothing to export).
+function pickExportScope(noun, byBookMap, currentCount) {
+  const otherBooks = Object.entries(byBookMap)
+    .filter(([bid, arr]) => bid !== state.bookId && arr?.length);
+  const totalOthers = otherBooks.reduce((n, [, arr]) => n + arr.length, 0);
+  if (!currentCount && !totalOthers) return null;
+  if (!totalOthers) return 'current';
+  if (!currentCount) return 'all';
+  // Both exist — ask. `confirm` returns true for OK (current) and false for Cancel (all).
+  const ok = confirm(
+    `导出${noun}：\n\n` +
+    `【确定】 仅导出本书${noun}（${currentCount} 条）\n` +
+    `【取消】 导出所有书的${noun}（共 ${currentCount + totalOthers} 条）`
+  );
+  return ok ? 'current' : 'all';
+}
 
 // Fetch definition from the free dictionary API.
 async function fetchDefinition(word) {
@@ -1016,8 +1086,8 @@ reader.addEventListener('dblclick', async (e) => {
   currentLookup = { word, def, phonetic, context };
   renderDef(def);
 
-  // If already saved, mark + prefill enrichment from storage
-  const existing = vocab.find(v => v.word === word);
+  // If already saved in THIS book, mark + prefill enrichment from storage
+  const existing = currentBookVocab().find(v => v.word === word);
   if (existing) {
     wordAdd.classList.add('saved');
     wordAdd.textContent = '✓ Saved';
@@ -1052,6 +1122,7 @@ reader.addEventListener('dblclick', async (e) => {
 wordAdd.addEventListener('click', () => {
   if (!currentLookup) return;
   const { word, def, phonetic, context, cn, mnemonic } = currentLookup;
+  const vocab = currentBookVocab();
   if (vocab.find(v => v.word === word)) return;
   vocab.push({
     word,
@@ -1082,34 +1153,51 @@ function flattenDefs(def) {
   return out;
 }
 
-function exportVocabMD() {
+function formatVocabEntry(v) {
+  const lines = [];
+  lines.push(`\n## ${v.word}`);
+  if (v.phonetic) lines.push(`- **Phonetic**: ${v.phonetic}`);
+  if (v.definitions?.length) {
+    lines.push(`- **Definitions**:`);
+    for (const d of v.definitions) {
+      lines.push(`  - *${d.pos || ''}* — ${d.text}`);
+    }
+  } else if (v.gloss) {
+    lines.push(`- **Definition**: ${v.gloss}`);
+  }
+  if (v.context) lines.push(`- **Context**: "${v.context}"`);
+  if (v.cn) lines.push(`- **中文**: ${v.cn}`);
+  if (v.mnemonic) lines.push(`- **Memory**: ${v.mnemonic}`);
+  if (v.addedAt) {
+    const d = new Date(v.addedAt);
+    lines.push(`- **Saved**: ${d.toISOString().slice(0, 16).replace('T', ' ')}`);
+  }
+  return lines.join('\n');
+}
+
+function exportVocabMD(scope = 'current') {
+  const date = new Date().toISOString().slice(0, 10);
+  if (scope === 'all') {
+    // Group by book, emit one H2 per book with its entries underneath
+    const booksWithVocab = Object.entries(vocabByBook).filter(([, arr]) => arr?.length);
+    if (!booksWithVocab.length) return '';
+    const total = booksWithVocab.reduce((n, [, arr]) => n + arr.length, 0);
+    const bookTitleFor = (bid) => {
+      const entry = (state.library || []).find(b => b.id === bid);
+      return entry?.title || bid;
+    };
+    let out = `# Vocabulary — All Books — ${date}\n\n${total} words across ${booksWithVocab.length} books\n`;
+    for (const [bid, arr] of booksWithVocab) {
+      out += `\n\n# ${bookTitleFor(bid)} (${arr.length})\n`;
+      out += arr.map(formatVocabEntry).join('\n');
+    }
+    return out;
+  }
+  const vocab = currentBookVocab();
   if (!vocab.length) return '';
-  const header = `# Vocabulary — ${new Date().toISOString().slice(0, 10)}\n`;
-  const meta = vocab[0]?.bookTitle
-    ? `\nFrom: _${vocab[0].bookTitle}_ · ${vocab.length} words\n`
-    : `\n${vocab.length} words\n`;
-  const bodies = vocab.map(v => {
-    const lines = [];
-    lines.push(`\n## ${v.word}`);
-    if (v.phonetic) lines.push(`- **Phonetic**: ${v.phonetic}`);
-    if (v.definitions?.length) {
-      lines.push(`- **Definitions**:`);
-      for (const d of v.definitions) {
-        lines.push(`  - *${d.pos || ''}* — ${d.text}`);
-      }
-    } else if (v.gloss) {
-      lines.push(`- **Definition**: ${v.gloss}`);
-    }
-    if (v.context) lines.push(`- **Context**: "${v.context}"`);
-    if (v.cn) lines.push(`- **中文**: ${v.cn}`);
-    if (v.mnemonic) lines.push(`- **Memory**: ${v.mnemonic}`);
-    if (v.addedAt) {
-      const d = new Date(v.addedAt);
-      lines.push(`- **Saved**: ${d.toISOString().slice(0, 16).replace('T', ' ')}`);
-    }
-    return lines.join('\n');
-  });
-  return header + meta + bodies.join('\n');
+  const title = state.book?.title || 'Book';
+  const header = `# Vocabulary — ${title} — ${date}\n\n${vocab.length} words\n`;
+  return header + vocab.map(formatVocabEntry).join('\n');
 }
 
 function downloadFile(name, content, mime = 'text/markdown;charset=utf-8') {
@@ -1374,11 +1462,11 @@ noteToggle.addEventListener('click', () => {
   syncToggleActive();
 });
 
-function exportNotesMD() {
-  const arr = currentBookNotes().slice().sort((a, b) => a.sentIdx - b.sentIdx);
-  if (!arr.length) return '';
-  const title = state.book?.title || 'Book';
-  const header = `# Notes — ${title}\n\n${arr.length} notes · exported ${new Date().toISOString().slice(0, 10)}\n`;
+// Format a single notes array into a Markdown body. Chapter headers are
+// only meaningful when the notes belong to the *currently loaded* book —
+// for other books we don't have a chapter index handy, so we just list
+// the notes in saved order under the book title.
+function formatNotesForCurrentBook(arr) {
   let currentCh = -1;
   const bodies = [];
   for (const n of arr) {
@@ -1390,14 +1478,52 @@ function exportNotesMD() {
     }
     bodies.push(`> ${(n.context || '').trim()}\n\n${n.text.trim()}\n`);
   }
-  return header + bodies.join('\n');
+  return bodies.join('\n');
+}
+
+function formatNotesForOtherBook(arr) {
+  // Sort by sentIdx as a rough proxy for reading order.
+  const sorted = arr.slice().sort((a, b) => (a.sentIdx ?? 0) - (b.sentIdx ?? 0));
+  return sorted.map(n => `> ${(n.context || '').trim()}\n\n${(n.text || '').trim()}\n`).join('\n');
+}
+
+function exportNotesMD(scope = 'current') {
+  const date = new Date().toISOString().slice(0, 10);
+  if (scope === 'all') {
+    const booksWithNotes = Object.entries(notesByBook).filter(([, arr]) => arr?.length);
+    if (!booksWithNotes.length) return '';
+    const total = booksWithNotes.reduce((n, [, arr]) => n + arr.length, 0);
+    const bookTitleFor = (bid) => {
+      const entry = (state.library || []).find(b => b.id === bid);
+      return entry?.title || bid;
+    };
+    let out = `# Notes — All Books — ${date}\n\n${total} notes across ${booksWithNotes.length} books\n`;
+    for (const [bid, arr] of booksWithNotes) {
+      out += `\n\n# ${bookTitleFor(bid)} (${arr.length})\n`;
+      const sorted = arr.slice().sort((a, b) => (a.sentIdx ?? 0) - (b.sentIdx ?? 0));
+      out += bid === state.bookId
+        ? formatNotesForCurrentBook(sorted)
+        : formatNotesForOtherBook(sorted);
+    }
+    return out;
+  }
+  const arr = currentBookNotes().slice().sort((a, b) => a.sentIdx - b.sentIdx);
+  if (!arr.length) return '';
+  const title = state.book?.title || 'Book';
+  const header = `# Notes — ${title}\n\n${arr.length} notes · exported ${date}\n`;
+  return header + formatNotesForCurrentBook(arr);
 }
 
 notesExport.addEventListener('click', () => {
-  const md = exportNotesMD();
+  const scope = pickExportScope('笔记', notesByBook, currentBookNotes().length);
+  if (!scope) return;
+  const md = exportNotesMD(scope);
   if (!md) return;
-  const safeTitle = (state.book?.title || 'notes').replace(/[^a-zA-Z0-9-]+/g, '-');
-  downloadFile(`notes-${safeTitle}-${new Date().toISOString().slice(0, 10)}.md`, md);
+  const date = new Date().toISOString().slice(0, 10);
+  const fileName = scope === 'all'
+    ? `notes-all-${date}.md`
+    : `notes-${(state.book?.title || 'notes').replace(/[^a-zA-Z0-9-]+/g, '-')}-${date}.md`;
+  downloadFile(fileName, md);
 });
 
 audio.addEventListener('timeupdate', onTimeUpdate);
